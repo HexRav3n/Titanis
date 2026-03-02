@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Titanis.Cli;
 using Titanis.Msrpc.Msdrsr;
+using Titanis.Winterop;
 
 namespace Drsr;
 
@@ -56,8 +57,25 @@ internal class DcSyncCommand : DrsCommand
 			}
 			else
 			{
-				nc = await ResolveDefaultNamingContextAsync(dsa, cancellationToken).ConfigureAwait(false);
-				this.WriteVerbose($"Using naming context: {nc}");
+				try
+				{
+					nc = await ResolveDefaultNamingContextAsync(dsa, cancellationToken).ConfigureAwait(false);
+					this.WriteVerbose($"Using naming context: {nc}");
+				}
+				catch (Win32Exception ex) when ((uint)ex.NativeErrorCode == (uint)Win32ErrorCode.ERROR_INVALID_PARAMETER)
+				{
+					if (!TryInferNamingContext(
+						this.Authentication?.UserDomain,
+						this.ServerName,
+						out nc))
+					{
+						throw;
+					}
+
+					this.WriteWarning(
+						$"DRSCrackNames default naming-context discovery failed with ERROR_INVALID_PARAMETER. " +
+						$"Falling back to inferred naming context: {nc}");
+				}
 			}
 
 			string? targetDn = null;
@@ -199,6 +217,10 @@ internal class DcSyncCommand : DrsCommand
 	/// </summary>
 	private static async Task<string?> ResolveIdentityToDnAsync(DrsDsa dsa, string identity, CancellationToken ct)
 	{
+		// Already a DN: no need for DRSCrackNames.
+		if (LooksLikeDistinguishedName(identity))
+			return identity;
+
 		// Try as DS_UNKNOWN_NAME first (handles sAMAccountName, UPN, SID, DN)
 		var result = await dsa.CrackNamesAsync(
 			new[] { identity },
@@ -215,6 +237,80 @@ internal class DcSyncCommand : DrsCommand
 		}
 
 		return null;
+	}
+
+	private static bool TryInferNamingContext(string? userDomain, string? serverName, out string namingContext)
+	{
+		namingContext = string.Empty;
+
+		string? dnsDomain = null;
+		if (!string.IsNullOrWhiteSpace(userDomain))
+		{
+			dnsDomain = userDomain;
+		}
+		else if (!string.IsNullOrWhiteSpace(serverName))
+		{
+			dnsDomain = ExtractLikelyDomain(serverName);
+		}
+
+		if (string.IsNullOrWhiteSpace(dnsDomain))
+			return false;
+
+		string dn = ConvertDnsDomainToDn(dnsDomain);
+		if (string.IsNullOrEmpty(dn))
+			return false;
+
+		namingContext = dn;
+		return true;
+	}
+
+	private static string? ExtractLikelyDomain(string serverName)
+	{
+		string s = serverName.Trim();
+		if (string.IsNullOrEmpty(s))
+			return null;
+		if (s.StartsWith(@"\\"))
+			s = s.Substring(2);
+		if (System.Net.IPAddress.TryParse(s, out _))
+			return null;
+
+		string[] labels = s.Split('.', StringSplitOptions.RemoveEmptyEntries);
+		if (labels.Length < 2)
+			return null;
+
+		// If this looks like a host FQDN (>=3 labels), strip the host label.
+		if (labels.Length >= 3)
+			return string.Join('.', labels, 1, labels.Length - 1);
+
+		// Two labels may already be the domain (e.g. corp.local).
+		return s;
+	}
+
+	private static string ConvertDnsDomainToDn(string dnsDomain)
+	{
+		string[] labels = dnsDomain
+			.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		if (labels.Length == 0)
+			return string.Empty;
+
+		var components = new List<string>(labels.Length);
+		foreach (var label in labels)
+		{
+			if (string.IsNullOrEmpty(label))
+				return string.Empty;
+			if (label.IndexOfAny(new[] { ',', '=' }) >= 0)
+				return string.Empty;
+			components.Add($"DC={label}");
+		}
+
+		return string.Join(",", components);
+	}
+
+	private static bool LooksLikeDistinguishedName(string value)
+	{
+		return value.IndexOf("DC=", StringComparison.OrdinalIgnoreCase) >= 0
+			|| value.IndexOf("CN=", StringComparison.OrdinalIgnoreCase) >= 0
+			|| value.IndexOf("OU=", StringComparison.OrdinalIgnoreCase) >= 0;
 	}
 
 	// The "null" LM hash is aad3b435b51404eeaad3b435b51404ee — indicates no LM hash stored.
