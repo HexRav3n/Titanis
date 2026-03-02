@@ -355,7 +355,6 @@ namespace ms_drsr {
         public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
             encoder.WriteValue(this.ndx);
             encoder.WriteFixedStruct(this.prefix, Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteStructDeferral(this.prefix);
         }
         public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
             this.ndx = decoder.ReadUInt32();
@@ -579,7 +578,6 @@ namespace ms_drsr {
         public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
             encoder.WriteValue(this.attrTyp);
             encoder.WriteFixedStruct(this.AttrVal, Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteStructDeferral(this.AttrVal);
         }
         public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
             this.attrTyp = decoder.ReadUInt32();
@@ -615,7 +613,6 @@ namespace ms_drsr {
                 encoder.WriteArrayHeader<ATTR>(this.pAttr.value);
                 for (int i = 0; (i < this.pAttr.value.Length); i++) {
                     encoder.WriteFixedStruct(this.pAttr.value[i], Titanis.DceRpc.NdrAlignment._4Byte);
-                    encoder.WriteStructDeferral(this.pAttr.value[i]);
                 }
                 for (int i = 0; (i < this.pAttr.value.Length); i++) {
                     encoder.WriteStructDeferral(this.pAttr.value[i]);
@@ -644,7 +641,6 @@ namespace ms_drsr {
             encoder.WritePointer(this.pName);
             encoder.WriteValue(this.ulFlags);
             encoder.WriteFixedStruct(this.AttrBlock, Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteStructDeferral(this.AttrBlock);
         }
         public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
             this.pName = decoder.ReadPointer<DSNAME>();
@@ -678,7 +674,6 @@ namespace ms_drsr {
         public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
             encoder.WritePointer(this.pNextEntInf);
             encoder.WriteFixedStruct(this.Entinf, Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteStructDeferral(this.Entinf);
             encoder.WriteValue(this.fIsNCPrefix);
             encoder.WritePointer(this.pParentGuid);
             encoder.WritePointer(this.pMetaDataExt);
@@ -828,7 +823,6 @@ namespace ms_drsr {
             encoder.WriteFixedStruct(this.usnvecTo, Titanis.DceRpc.NdrAlignment._4Byte);
             encoder.WritePointer(this.pUpToDateVecSrcV1);
             encoder.WriteFixedStruct(this.PrefixTableSrc, Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteStructDeferral(this.PrefixTableSrc);
             encoder.WriteValue(this.ulExtendedRet);
             encoder.WriteValue(this.cNumObjects);
             encoder.WriteValue(this.cNumBytes);
