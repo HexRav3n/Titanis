@@ -133,11 +133,16 @@ namespace ms_drsr {
     [System.CodeDom.Compiler.GeneratedCodeAttribute("Animus IDL Compiler", "0.9.4")]
     public struct DRS_EXTENSIONS : Titanis.DceRpc.IRpcConformantStruct {
         public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
-            // no fixed fields besides the conformant array
+            encoder.WriteValue(this.cb);
         }
         public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
+            this.cb = decoder.ReadUInt32();
         }
         public void EncodeHeader(Titanis.DceRpc.IRpcEncoder encoder) {
+            if ((this.rgb == null)) {
+                this.rgb = new byte[this.cb];
+            }
+            this.cb = (uint)this.rgb.Length;
             encoder.WriteArrayHeader(this.rgb);
         }
         public void DecodeHeader(Titanis.DceRpc.IRpcDecoder decoder) {
@@ -153,6 +158,7 @@ namespace ms_drsr {
                 this.rgb[i] = decoder.ReadUnsignedChar();
             }
         }
+        public uint cb;
         public byte[] rgb;
         public void EncodeDeferrals(Titanis.DceRpc.IRpcEncoder encoder) {
         }

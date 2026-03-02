@@ -50,15 +50,22 @@ namespace Titanis.Msrpc.Msdrsr
 				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_GETCHGREQ_V8 |
 				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_LINKED_VALUE_REPLICATION;
 
-			// Build the extensions blob (4-byte flags LE)
-			byte[] extBlob = new byte[4];
+			// DRS_EXTENSIONS.rgb contains a serialized DRS_EXTENSIONS_INT.
+			// Minimal valid form is:
+			//   DWORD cb (size of this inner blob), DWORD dwFlags
+			byte[] extBlob = new byte[8];
 			uint extFlagsUint = (uint)extFlags;
-			extBlob[0] = (byte)(extFlagsUint);
-			extBlob[1] = (byte)(extFlagsUint >> 8);
-			extBlob[2] = (byte)(extFlagsUint >> 16);
-			extBlob[3] = (byte)(extFlagsUint >> 24);
+			const uint innerCb = 8;
+			extBlob[0] = (byte)innerCb;
+			extBlob[1] = (byte)(innerCb >> 8);
+			extBlob[2] = (byte)(innerCb >> 16);
+			extBlob[3] = (byte)(innerCb >> 24);
+			extBlob[4] = (byte)(extFlagsUint);
+			extBlob[5] = (byte)(extFlagsUint >> 8);
+			extBlob[6] = (byte)(extFlagsUint >> 16);
+			extBlob[7] = (byte)(extFlagsUint >> 24);
 
-			var pextClient = new RpcPointer<DRS_EXTENSIONS>(new DRS_EXTENSIONS { rgb = extBlob });
+			var pextClient = new RpcPointer<DRS_EXTENSIONS>(new DRS_EXTENSIONS { cb = (uint)extBlob.Length, rgb = extBlob });
 			var ppextServer = new RpcPointer<RpcPointer<DRS_EXTENSIONS>>(new RpcPointer<DRS_EXTENSIONS>());
 			var phDrs = new RpcPointer<RpcContextHandle>();
 
