@@ -197,8 +197,11 @@ namespace Titanis.Msrpc.Msdrsr
 			DRS_MSG_GETCHGREQ_V8 request,
 			CancellationToken cancellationToken)
 		{
+			uint pncStructLen = request.pNC?.value.structLen ?? 0;
+			uint pncNameLen = request.pNC?.value.NameLen ?? 0;
+			int pncChars = request.pNC?.value.StringName?.Length ?? 0;
 			this.EmitDiagnostic(
-				$"[SuperDiag] DRSGetNCChanges start ulFlags=0x{request.ulFlags:X8} cMaxObjects={request.cMaxObjects} cMaxBytes={request.cMaxBytes} hasPartial={(request.pPartialAttrSet != null)}");
+				$"[SuperDiag] DRSGetNCChanges start ulFlags=0x{request.ulFlags:X8} ulExtendedOp={request.ulExtendedOp} cMaxObjects={request.cMaxObjects} cMaxBytes={request.cMaxBytes} hasPartial={(request.pPartialAttrSet != null)} pNC(structLen={pncStructLen},nameLen={pncNameLen},chars={pncChars})");
 
 			async Task<(uint Ret, uint OutVersion, DRS_MSG_GETCHGREPLY_V6 Reply)> InvokeAsync(bool tagged)
 			{

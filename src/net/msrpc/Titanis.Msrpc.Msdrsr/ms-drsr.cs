@@ -223,6 +223,7 @@ namespace ms_drsr {
             encoder.WriteValue(this.dwVersion);
             encoder.WriteValue(this.dwReserved1);
             encoder.WriteValue(this.cNumCursors);
+            encoder.WriteValue(this.dwReserved2);
             if ((this.rgCursors == null)) {
                 this.rgCursors = new UPTODATE_CURSOR_V1[this.cNumCursors];
             }
@@ -234,6 +235,7 @@ namespace ms_drsr {
             this.dwVersion = decoder.ReadUInt32();
             this.dwReserved1 = decoder.ReadUInt32();
             this.cNumCursors = decoder.ReadUInt32();
+            this.dwReserved2 = decoder.ReadUInt32();
             this.rgCursors = new UPTODATE_CURSOR_V1[this.cNumCursors];
             for (int i = 0; (i < this.cNumCursors); i++) {
                 this.rgCursors[i] = decoder.ReadFixedStruct<UPTODATE_CURSOR_V1>(Titanis.DceRpc.NdrAlignment._4Byte);
@@ -242,7 +244,70 @@ namespace ms_drsr {
         public uint dwVersion;
         public uint dwReserved1;
         public uint cNumCursors;
+        public uint dwReserved2;
         public UPTODATE_CURSOR_V1[] rgCursors;
+        public void EncodeDeferrals(Titanis.DceRpc.IRpcEncoder encoder) {
+        }
+        public void DecodeDeferrals(Titanis.DceRpc.IRpcDecoder decoder) {
+        }
+    }
+
+    /// <summary>
+    /// Up-to-date vector cursor entry (version 2). [MS-DRSR] § 5.210
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCodeAttribute("Animus IDL Compiler", "0.9.4")]
+    public struct UPTODATE_CURSOR_V2 : Titanis.DceRpc.IRpcFixedStruct {
+        public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
+            encoder.WriteFixedStruct(this.uuidDsa, Titanis.DceRpc.NdrAlignment._4Byte);
+            encoder.WriteValue(this.usnHighPropUpdate);
+            encoder.WriteValue(this.timeLastSyncSuccess);
+        }
+        public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
+            this.uuidDsa = decoder.ReadFixedStruct<ms_dtyp.GUID>(Titanis.DceRpc.NdrAlignment._4Byte);
+            this.usnHighPropUpdate = decoder.ReadInt64();
+            this.timeLastSyncSuccess = decoder.ReadInt64();
+        }
+        public ms_dtyp.GUID uuidDsa;
+        public long usnHighPropUpdate;
+        public long timeLastSyncSuccess;
+        public void EncodeDeferrals(Titanis.DceRpc.IRpcEncoder encoder) {
+        }
+        public void DecodeDeferrals(Titanis.DceRpc.IRpcDecoder decoder) {
+        }
+    }
+
+    /// <summary>
+    /// Up-to-date vector (version 2). [MS-DRSR] § 5.212
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCodeAttribute("Animus IDL Compiler", "0.9.4")]
+    public struct UPTODATE_VECTOR_V2_EXT : Titanis.DceRpc.IRpcFixedStruct {
+        public void Encode(Titanis.DceRpc.IRpcEncoder encoder) {
+            encoder.WriteValue(this.dwVersion);
+            encoder.WriteValue(this.dwReserved1);
+            encoder.WriteValue(this.cNumCursors);
+            encoder.WriteValue(this.dwReserved2);
+            if ((this.rgCursors == null)) {
+                this.rgCursors = new UPTODATE_CURSOR_V2[this.cNumCursors];
+            }
+            for (int i = 0; (i < this.cNumCursors); i++) {
+                encoder.WriteFixedStruct(this.rgCursors[i], Titanis.DceRpc.NdrAlignment._4Byte);
+            }
+        }
+        public void Decode(Titanis.DceRpc.IRpcDecoder decoder) {
+            this.dwVersion = decoder.ReadUInt32();
+            this.dwReserved1 = decoder.ReadUInt32();
+            this.cNumCursors = decoder.ReadUInt32();
+            this.dwReserved2 = decoder.ReadUInt32();
+            this.rgCursors = new UPTODATE_CURSOR_V2[this.cNumCursors];
+            for (int i = 0; (i < this.cNumCursors); i++) {
+                this.rgCursors[i] = decoder.ReadFixedStruct<UPTODATE_CURSOR_V2>(Titanis.DceRpc.NdrAlignment._4Byte);
+            }
+        }
+        public uint dwVersion;
+        public uint dwReserved1;
+        public uint cNumCursors;
+        public uint dwReserved2;
+        public UPTODATE_CURSOR_V2[] rgCursors;
         public void EncodeDeferrals(Titanis.DceRpc.IRpcEncoder encoder) {
         }
         public void DecodeDeferrals(Titanis.DceRpc.IRpcDecoder decoder) {
@@ -781,7 +846,7 @@ namespace ms_drsr {
             this.pNC = decoder.ReadPointer<DSNAME>();
             this.usnvecFrom = decoder.ReadFixedStruct<USN_VECTOR>(Titanis.DceRpc.NdrAlignment._4Byte);
             this.usnvecTo = decoder.ReadFixedStruct<USN_VECTOR>(Titanis.DceRpc.NdrAlignment._4Byte);
-            this.pUpToDateVecSrcV1 = decoder.ReadPointer<UPTODATE_VECTOR_V1_EXT>();
+            this.pUpToDateVecSrcV1 = decoder.ReadPointer<UPTODATE_VECTOR_V2_EXT>();
             this.PrefixTableSrc = decoder.ReadFixedStruct<SCHEMA_PREFIX_TABLE>(Titanis.DceRpc.NdrAlignment._4Byte);
             this.ulExtendedRet = decoder.ReadUInt32();
             this.cNumObjects = decoder.ReadUInt32();
@@ -799,7 +864,7 @@ namespace ms_drsr {
         public RpcPointer<DSNAME> pNC;
         public USN_VECTOR usnvecFrom;
         public USN_VECTOR usnvecTo;
-        public RpcPointer<UPTODATE_VECTOR_V1_EXT> pUpToDateVecSrcV1;
+        public RpcPointer<UPTODATE_VECTOR_V2_EXT> pUpToDateVecSrcV1;
         public SCHEMA_PREFIX_TABLE PrefixTableSrc;
         public uint ulExtendedRet;
         public uint cNumObjects;
@@ -837,7 +902,7 @@ namespace ms_drsr {
                 decoder.ReadStructDeferral<DSNAME>(ref this.pNC.value);
             }
             if ((null != this.pUpToDateVecSrcV1)) {
-                this.pUpToDateVecSrcV1.value = decoder.ReadFixedStruct<UPTODATE_VECTOR_V1_EXT>(Titanis.DceRpc.NdrAlignment._4Byte);
+                this.pUpToDateVecSrcV1.value = decoder.ReadFixedStruct<UPTODATE_VECTOR_V2_EXT>(Titanis.DceRpc.NdrAlignment._4Byte);
             }
             decoder.ReadStructDeferral<SCHEMA_PREFIX_TABLE>(ref this.PrefixTableSrc);
             if ((null != this.pObjects)) {

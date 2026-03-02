@@ -160,13 +160,16 @@ namespace Titanis.Msrpc.Msdrsr
 		{
 			// Build the NC DSNAME
 			char[] nameChars = (namingContextDn + '\0').ToCharArray();
+			// DSNAME.structLen should include the NDR conformant header + fixed body + WCHAR data.
+			// This mirrors known-good client behavior and avoids server-side stub correlation failures.
+			uint structLen = (uint)(60 + (nameChars.Length * sizeof(char)));
 			var pNC = new RpcPointer<DSNAME>(new DSNAME
 			{
-				structLen = 0,  // server fills this in
+				structLen = structLen,
 				SidLen = 0,
 				Guid = objectGuid.ToRpcGuid(),
 				Sid = new byte[28],
-				NameLen = (uint)namingContextDn.Length,
+				NameLen = (uint)nameChars.Length,
 				StringName = nameChars,
 			});
 

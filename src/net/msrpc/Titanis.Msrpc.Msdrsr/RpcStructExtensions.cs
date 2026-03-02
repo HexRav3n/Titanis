@@ -44,7 +44,8 @@ namespace Titanis.Msrpc.Msdrsr
 		{
 			if (dsname.StringName == null || dsname.NameLen == 0)
 				return null;
-			return new string(dsname.StringName, 0, (int)dsname.NameLen);
+			string s = new string(dsname.StringName, 0, Math.Min((int)dsname.NameLen, dsname.StringName.Length));
+			return s.TrimEnd('\0');
 		}
 
 		/// <summary>
