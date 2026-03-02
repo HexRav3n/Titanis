@@ -1016,6 +1016,7 @@ namespace ms_drsr {
     // drsuapi interface marker
     // -------------------------------------------------------------------------
 
+    [System.Runtime.InteropServices.GuidAttribute("e3514235-4b06-11d1-ab04-00c04fc2dcd2")]
     [Titanis.DceRpc.RpcVersionAttribute(4, 0)]
     public interface drsuapi {
     }

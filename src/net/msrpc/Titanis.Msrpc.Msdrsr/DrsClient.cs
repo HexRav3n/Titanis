@@ -15,15 +15,11 @@ namespace Titanis.Msrpc.Msdrsr
 	/// </summary>
 	public class DrsClient : RpcServiceClient<ms_drsr.drsClientProxy>
 	{
-		/// <summary>
-		/// Well-known named pipe name for the DRSR interface.
-		/// </summary>
-		public const string PipeName = "drsuapi";
-
 		#region Connection parameters
-		// [MS-DRSR] § 2.1
+		// MS-DRSR should be resolved via endpoint mapper over TCP.
+		// Avoid SMB named pipe fallback for this client.
 		/// <inheritdoc/>
-		public sealed override string? WellKnownPipeName => PipeName;
+		public sealed override string? WellKnownPipeName => null;
 		// [MS-DRSR] § 2.1
 		/// <inheritdoc/>
 		public sealed override bool SupportsDynamicTcp => true;
