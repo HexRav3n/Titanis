@@ -158,10 +158,13 @@ namespace Titanis.Msrpc.Msdrsr
 			Guid objectGuid,
 			USN_VECTOR usnFrom)
 		{
-			// Build the NC DSNAME
-			char[] nameChars = (namingContextDn + '\0').ToCharArray();
-			// DSNAME.structLen should include the NDR conformant header + fixed body + WCHAR data.
-			// This mirrors known-good client behavior and avoids server-side stub correlation failures.
+			// Build the NC DSNAME.
+			// NameLen = number of chars NOT including the null terminator (per spec).
+			// StringName = null-terminated array, size_is(NameLen + 1).
+			uint nameLen = (uint)namingContextDn.Length;
+			char[] nameChars = (namingContextDn + '\0').ToCharArray(); // length = nameLen + 1
+			// structLen mirrors the in-memory C struct size used by Windows:
+			//   fixed part (60 bytes) + WCHARs (2 * (NameLen + 1))
 			uint structLen = (uint)(60 + (nameChars.Length * sizeof(char)));
 			var pNC = new RpcPointer<DSNAME>(new DSNAME
 			{
@@ -169,7 +172,7 @@ namespace Titanis.Msrpc.Msdrsr
 				SidLen = 0,
 				Guid = objectGuid.ToRpcGuid(),
 				Sid = new byte[28],
-				NameLen = (uint)nameChars.Length,
+				NameLen = nameLen,
 				StringName = nameChars,
 			});
 
