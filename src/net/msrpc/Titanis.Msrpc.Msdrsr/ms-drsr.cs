@@ -483,7 +483,7 @@ namespace ms_drsr {
         }
         public void DecodeConformantArrayField(Titanis.DceRpc.IRpcDecoder decoder) {
             for (int i = 0; (i < this.StringName.Length); i++) {
-                this.StringName[i] = (char)decoder.ReadChar();
+                this.StringName[i] = decoder.ReadWideChar();
             }
         }
         public uint structLen;

@@ -202,7 +202,13 @@ namespace Titanis.Msrpc.Msdrsr
 				liFsmoInfo = 0,
 				pPartialAttrSet = pPartialAttrSet,
 				pPartialAttrSetEx = null,
-				PrefixTableDest = new SCHEMA_PREFIX_TABLE(),
+				// Always provide a non-null pPrefixEntry (even if empty) — Windows DC
+				// rejects requests where PrefixTableDest.pPrefixEntry is a null pointer.
+				PrefixTableDest = new SCHEMA_PREFIX_TABLE
+				{
+					PrefixCount = 0,
+					pPrefixEntry = new RpcPointer<PrefixTableEntry[]>(Array.Empty<PrefixTableEntry>()),
+				},
 			};
 		}
 	}
