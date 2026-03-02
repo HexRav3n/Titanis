@@ -200,21 +200,39 @@ namespace Titanis.Msrpc.Msdrsr
 			this.EmitDiagnostic(
 				$"[SuperDiag] DRSGetNCChanges start ulFlags=0x{request.ulFlags:X8} cMaxObjects={request.cMaxObjects} cMaxBytes={request.cMaxBytes} hasPartial={(request.pPartialAttrSet != null)}");
 
-			var pdwOutVersion = new RpcPointer<uint>();
-			var pmsgOut = new RpcPointer<DRS_MSG_GETCHGREPLY_V6>();
+			async Task<(uint Ret, uint OutVersion, DRS_MSG_GETCHGREPLY_V6 Reply)> InvokeAsync(bool tagged)
+			{
+				var pdwOutVersion = new RpcPointer<uint>();
+				var pmsgOut = new RpcPointer<DRS_MSG_GETCHGREPLY_V6>();
 
-			var ret = await this._proxy.IDL_DRSGetNCChanges(
-				handle,
-				request,
-				pdwOutVersion,
-				pmsgOut,
-				cancellationToken).ConfigureAwait(false);
+				uint ret = tagged
+					? await this._proxy.IDL_DRSGetNCChangesTagged(
+						handle, request, pdwOutVersion, pmsgOut, cancellationToken).ConfigureAwait(false)
+					: await this._proxy.IDL_DRSGetNCChanges(
+						handle, request, pdwOutVersion, pmsgOut, cancellationToken).ConfigureAwait(false);
 
-			((Win32ErrorCode)ret).CheckAndThrow();
+				return (ret, pdwOutVersion.value, pmsgOut.value);
+			}
+
+			try
+			{
+				var res = await InvokeAsync(tagged: false).ConfigureAwait(false);
+				((Win32ErrorCode)res.Ret).CheckAndThrow();
+				this.EmitDiagnostic(
+					$"[SuperDiag] DRSGetNCChanges returned ret=0x{res.Ret:X8} dwOutVersion={res.OutVersion} moreData={res.Reply.fMoreData} cNumObjects={res.Reply.cNumObjects} cNumBytes={res.Reply.cNumBytes} wire=untagged");
+				return res.Reply;
+			}
+			catch (Win32Exception ex) when ((uint)ex.NativeErrorCode == (uint)Win32ErrorCode.RPC_X_BAD_STUB_DATA)
+			{
+				this.EmitDiagnostic(
+					$"[SuperDiag] DRSGetNCChanges untagged wire failed with RPC_X_BAD_STUB_DATA; retrying tagged union wire.");
+			}
+
+			var taggedRes = await InvokeAsync(tagged: true).ConfigureAwait(false);
+			((Win32ErrorCode)taggedRes.Ret).CheckAndThrow();
 			this.EmitDiagnostic(
-				$"[SuperDiag] DRSGetNCChanges returned ret=0x{ret:X8} dwOutVersion={pdwOutVersion.value} moreData={pmsgOut.value.fMoreData} cNumObjects={pmsgOut.value.cNumObjects} cNumBytes={pmsgOut.value.cNumBytes}");
-
-			return pmsgOut.value;
+				$"[SuperDiag] DRSGetNCChanges returned ret=0x{taggedRes.Ret:X8} dwOutVersion={taggedRes.OutVersion} moreData={taggedRes.Reply.fMoreData} cNumObjects={taggedRes.Reply.cNumObjects} cNumBytes={taggedRes.Reply.cNumBytes} wire=tagged");
+			return taggedRes.Reply;
 		}
 
 		internal async Task<DS_NAME_RESULTW> CrackNamesAsync(
@@ -239,21 +257,41 @@ namespace Titanis.Msrpc.Msdrsr
 				rpNames = new RpcPointer<string[]>(names),
 			};
 
-			var pdwOutVersion = new RpcPointer<uint>();
-			var pmsgOut = new RpcPointer<DRS_MSG_CRACKREPLY_V1>();
+			async Task<(uint Ret, uint OutVersion, DRS_MSG_CRACKREPLY_V1 Reply)> InvokeAsync(bool tagged)
+			{
+				var pdwOutVersion = new RpcPointer<uint>();
+				var pmsgOut = new RpcPointer<DRS_MSG_CRACKREPLY_V1>();
 
-			var ret = await this._proxy.IDL_DRSCrackNames(
-				handle,
-				request,
-				pdwOutVersion,
-				pmsgOut,
-				cancellationToken).ConfigureAwait(false);
+				uint ret = tagged
+					? await this._proxy.IDL_DRSCrackNamesTagged(
+						handle, request, pdwOutVersion, pmsgOut, cancellationToken).ConfigureAwait(false)
+					: await this._proxy.IDL_DRSCrackNames(
+						handle, request, pdwOutVersion, pmsgOut, cancellationToken).ConfigureAwait(false);
 
-			((Win32ErrorCode)ret).CheckAndThrow();
+				return (ret, pdwOutVersion.value, pmsgOut.value);
+			}
+
+			try
+			{
+				var res = await InvokeAsync(tagged: false).ConfigureAwait(false);
+				((Win32ErrorCode)res.Ret).CheckAndThrow();
+				this.EmitDiagnostic(
+					$"[SuperDiag] DRSCrackNames returned ret=0x{res.Ret:X8} dwOutVersion={res.OutVersion} cItems={res.Reply.pResult?.value.cItems ?? 0} wire=untagged");
+				return res.Reply.pResult?.value ?? new DS_NAME_RESULTW();
+			}
+			catch (Win32Exception ex) when (
+				(uint)ex.NativeErrorCode == (uint)Win32ErrorCode.RPC_X_BAD_STUB_DATA
+				|| (uint)ex.NativeErrorCode == (uint)Win32ErrorCode.ERROR_INVALID_PARAMETER)
+			{
+				this.EmitDiagnostic(
+					$"[SuperDiag] DRSCrackNames untagged wire failed with 0x{(uint)ex.NativeErrorCode:X8}; retrying tagged union wire.");
+			}
+
+			var taggedRes = await InvokeAsync(tagged: true).ConfigureAwait(false);
+			((Win32ErrorCode)taggedRes.Ret).CheckAndThrow();
 			this.EmitDiagnostic(
-				$"[SuperDiag] DRSCrackNames returned ret=0x{ret:X8} dwOutVersion={pdwOutVersion.value} cItems={pmsgOut.value.pResult?.value.cItems ?? 0}");
-
-			return pmsgOut.value.pResult?.value ?? new DS_NAME_RESULTW();
+				$"[SuperDiag] DRSCrackNames returned ret=0x{taggedRes.Ret:X8} dwOutVersion={taggedRes.OutVersion} cItems={taggedRes.Reply.pResult?.value.cItems ?? 0} wire=tagged");
+			return taggedRes.Reply.pResult?.value ?? new DS_NAME_RESULTW();
 		}
 
 		/// <summary>
