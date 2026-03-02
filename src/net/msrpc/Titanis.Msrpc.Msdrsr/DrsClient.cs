@@ -1,6 +1,7 @@
 using ms_drsr;
 using ms_dtyp;
 using System;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Titanis.DceRpc;
@@ -57,13 +58,15 @@ namespace Titanis.Msrpc.Msdrsr
 			ms_dtyp.GUID clientDsaGuid = clientGuid.ToRpcGuid();
 			var puuidClientDsa = new RpcPointer<ms_dtyp.GUID>(clientDsaGuid);
 
-			// Some DC/build combinations are strict about the DRS_EXTENSIONS_INT size.
-			// Try modern profile first, then progressively smaller legacy profiles.
+			// Some DC/build combinations are strict about DRSBind extension blob layout.
+			// Try several known profiles.
 			var extBlobs = new[]
 			{
 				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF),
 				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0),
 				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: false, extCaps: 0),
+				BuildDrsExtensionsBlobWithInnerCb(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF),
+				BuildLegacyShortExtensionsBlob(extFlagsUint),
 			};
 
 			Win32ErrorCode lastError = 0;
@@ -73,18 +76,31 @@ namespace Titanis.Msrpc.Msdrsr
 				var ppextServer = new RpcPointer<RpcPointer<DRS_EXTENSIONS>>(new RpcPointer<DRS_EXTENSIONS>());
 				var phDrs = new RpcPointer<RpcContextHandle>();
 
-				var ret = await this._proxy.IDL_DRSBind(
-					puuidClientDsa,
-					pextClient,
-					ppextServer,
-					phDrs,
-					cancellationToken).ConfigureAwait(false);
+				try
+				{
+					var ret = await this._proxy.IDL_DRSBind(
+						puuidClientDsa,
+						pextClient,
+						ppextServer,
+						phDrs,
+						cancellationToken).ConfigureAwait(false);
 
-				lastError = (Win32ErrorCode)ret;
-				if (lastError == 0)
-					return new DrsDsa(this, phDrs.value);
-				if (lastError != Win32ErrorCode.RPC_X_BAD_STUB_DATA)
-					lastError.CheckAndThrow();
+					lastError = (Win32ErrorCode)ret;
+					if (lastError == 0)
+						return new DrsDsa(this, phDrs.value);
+					if (lastError != Win32ErrorCode.RPC_X_BAD_STUB_DATA)
+						lastError.CheckAndThrow();
+				}
+				catch (Win32Exception ex) when ((uint)ex.NativeErrorCode == (uint)Win32ErrorCode.RPC_X_BAD_STUB_DATA)
+				{
+					lastError = Win32ErrorCode.RPC_X_BAD_STUB_DATA;
+				}
+			}
+
+			if (lastError == Win32ErrorCode.RPC_X_BAD_STUB_DATA)
+			{
+				throw new InvalidOperationException(
+					"DRSBind failed with RPC_X_BAD_STUB_DATA for all extension blob profiles (52/extcaps=ffffffff, 52/extcaps=0, 48/no-extcaps, 56/inner-cb, 8/legacy).");
 			}
 
 			lastError.CheckAndThrow();
@@ -103,6 +119,30 @@ namespace Titanis.Msrpc.Msdrsr
 			// ConfigObjGUID is all zeros (offset 32..47)
 			if (includeExtCaps)
 				WriteUInt32Le(extBlob, 48, extCaps); // dwExtCaps
+			return extBlob;
+		}
+
+		private static byte[] BuildDrsExtensionsBlobWithInnerCb(uint dwFlags, bool includeExtCaps, uint extCaps)
+		{
+			int cb = includeExtCaps ? 56 : 52;
+			byte[] extBlob = new byte[cb];
+			WriteUInt32Le(extBlob, 0, (uint)cb); // inner cb
+			WriteUInt32Le(extBlob, 4, dwFlags);  // dwFlags
+			// SiteObjGuid zeros (offset 8..23)
+			WriteUInt32Le(extBlob, 24, 0);       // Pid
+			WriteUInt32Le(extBlob, 28, 0);       // dwReplEpoch
+			WriteUInt32Le(extBlob, 32, 0);       // dwFlagsExt
+			// ConfigObjGUID zeros (offset 36..51)
+			if (includeExtCaps)
+				WriteUInt32Le(extBlob, 52, extCaps); // dwExtCaps
+			return extBlob;
+		}
+
+		private static byte[] BuildLegacyShortExtensionsBlob(uint dwFlags)
+		{
+			byte[] extBlob = new byte[8];
+			WriteUInt32Le(extBlob, 0, 8);       // inner cb
+			WriteUInt32Le(extBlob, 4, dwFlags); // dwFlags
 			return extBlob;
 		}
 
