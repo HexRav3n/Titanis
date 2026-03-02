@@ -34,7 +34,7 @@ internal class DcSyncCommand : DrsCommand
 
 	protected override async Task<int> RunAsync(DrsClient client, CancellationToken cancellationToken)
 	{
-		using var dsa = await client.BindAsync(Guid.NewGuid(), cancellationToken).ConfigureAwait(false);
+		using var dsa = await client.BindAsync(DrsClient.NtdsApiClientGuid, cancellationToken).ConfigureAwait(false);
 
 		// Resolve naming context if not explicitly provided
 		string nc;
