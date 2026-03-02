@@ -1181,12 +1181,12 @@ namespace ms_drsr {
             Titanis.DceRpc.IRpcEncoder encoder = req.StubData;
             encoder.WriteContextHandle(hDrs);
             encoder.WriteValue((uint)8);  // dwInVersion = 8
-            encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._4Byte);
+            encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._8Byte);
             encoder.WriteStructDeferral(pmsgIn);
             var sendTask = this.SendRequestAsync(req, cancellationToken);
             Titanis.DceRpc.IRpcDecoder decoder = await sendTask;
             pdwOutVersion.value = decoder.ReadUInt32();
-            pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_GETCHGREPLY_V6>(Titanis.DceRpc.NdrAlignment._4Byte);
+            pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_GETCHGREPLY_V6>(Titanis.DceRpc.NdrAlignment._8Byte);
             decoder.ReadStructDeferral<DRS_MSG_GETCHGREPLY_V6>(ref pmsgOut.value);
             uint retval = decoder.ReadUInt32();
             return retval;
@@ -1208,7 +1208,7 @@ namespace ms_drsr {
             encoder.WriteValue((uint)8);  // dwInVersion = 8
             encoder.WriteValue((uint)8);  // union tag = V8
             encoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
-            encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._4Byte);
+            encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._8Byte);
             encoder.WriteStructDeferral(pmsgIn);
             var sendTask = this.SendRequestAsync(req, cancellationToken);
             Titanis.DceRpc.IRpcDecoder decoder = await sendTask;
@@ -1218,7 +1218,7 @@ namespace ms_drsr {
                 throw new InvalidOperationException($"IDL_DRSGetNCChangesTagged returned unsupported union tag {outTag} (expected 6).");
             }
             decoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
-            pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_GETCHGREPLY_V6>(Titanis.DceRpc.NdrAlignment._4Byte);
+            pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_GETCHGREPLY_V6>(Titanis.DceRpc.NdrAlignment._8Byte);
             decoder.ReadStructDeferral<DRS_MSG_GETCHGREPLY_V6>(ref pmsgOut.value);
             uint retval = decoder.ReadUInt32();
             return retval;
