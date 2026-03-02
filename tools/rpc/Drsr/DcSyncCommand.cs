@@ -65,7 +65,12 @@ internal class DcSyncCommand : DrsCommand
 		// Attribute type IDs for secret attributes (resolved via the prefix table at decode time).
 		// We don't filter here; we let the DC send all attributes and decode what we recognise.
 
-		var flags = DRS_OPTIONS.DRS_INIT_SYNC | DRS_OPTIONS.DRS_WRIT_REP | DRS_OPTIONS.DRS_GET_ANC;
+		var flags =
+			DRS_OPTIONS.DRS_INIT_SYNC |
+			DRS_OPTIONS.DRS_WRIT_REP |
+			DRS_OPTIONS.DRS_GET_ANC |
+			DRS_OPTIONS.DRS_NEVER_SYNCED |
+			DRS_OPTIONS.DRS_SPECIAL_SECRET_PROCESSING;
 
 		(List<REPLENTINFLIST> entries, SCHEMA_PREFIX_TABLE prefixTable) =
 			await dsa.GetNCChangesWithPrefixTableAsync(
@@ -74,6 +79,14 @@ internal class DcSyncCommand : DrsCommand
 				partialAttrs: null,
 				objectGuid: Guid.Empty,
 				cancellationToken).ConfigureAwait(false);
+		this.WriteVerbose($"DRSGetNCChanges returned {entries.Count} raw entry nodes.");
+		if (entries.Count == 0)
+		{
+			this.WriteWarning(
+				"DRSGetNCChanges returned no entries. This usually means insufficient replication rights " +
+				"or an incorrect naming context/identity.");
+			return 0;
+		}
 
 		var results = new List<DcSyncResult>();
 
@@ -119,6 +132,16 @@ internal class DcSyncCommand : DrsCommand
 			}
 
 			results.Add(result);
+		}
+
+		if (results.Count == 0)
+		{
+			this.WriteWarning(
+				$"Retrieved {entries.Count} directory entries, but none contained decodable credential attributes.");
+		}
+		else
+		{
+			this.WriteVerbose($"Decoded {results.Count} credential records.");
 		}
 
 		this.WriteRecords(results);

@@ -44,9 +44,14 @@ namespace Titanis.Msrpc.Msdrsr
 			var results = new List<REPLENTINFLIST>();
 			USN_VECTOR usnFrom = new USN_VECTOR();
 			bool moreData;
+			int pageCount = 0;
 
 			do
 			{
+				pageCount++;
+				if (pageCount > 1024)
+					throw new InvalidOperationException("DRSGetNCChanges exceeded 1024 pages without completing.");
+
 				var req = BuildGetNCChangesRequest(namingContextDn, flags, partialAttrs, objectGuid, usnFrom);
 				DRS_MSG_GETCHGREPLY_V6 reply = await this._client.GetNCChangesAsync(
 					this._handle, req, cancellationToken).ConfigureAwait(false);
@@ -62,6 +67,11 @@ namespace Titanis.Msrpc.Msdrsr
 				moreData = reply.fMoreData;
 				if (moreData)
 				{
+					if (IsUsnVectorEqual(reply.usnvecTo, usnFrom))
+					{
+						throw new InvalidOperationException(
+							"DRSGetNCChanges signaled more data but replication cursor did not advance.");
+					}
 					// Next page starts where this one left off
 					usnFrom = reply.usnvecTo;
 				}
@@ -86,9 +96,14 @@ namespace Titanis.Msrpc.Msdrsr
 			SCHEMA_PREFIX_TABLE lastPrefixTable = default;
 			USN_VECTOR usnFrom = new USN_VECTOR();
 			bool moreData;
+			int pageCount = 0;
 
 			do
 			{
+				pageCount++;
+				if (pageCount > 1024)
+					throw new InvalidOperationException("DRSGetNCChanges exceeded 1024 pages without completing.");
+
 				var req = BuildGetNCChangesRequest(namingContextDn, flags, partialAttrs, objectGuid, usnFrom);
 				DRS_MSG_GETCHGREPLY_V6 reply = await this._client.GetNCChangesAsync(
 					this._handle, req, cancellationToken).ConfigureAwait(false);
@@ -105,12 +120,24 @@ namespace Titanis.Msrpc.Msdrsr
 				moreData = reply.fMoreData;
 				if (moreData)
 				{
+					if (IsUsnVectorEqual(reply.usnvecTo, usnFrom))
+					{
+						throw new InvalidOperationException(
+							"DRSGetNCChanges signaled more data but replication cursor did not advance.");
+					}
 					usnFrom = reply.usnvecTo;
 				}
 			}
 			while (moreData);
 
 			return (results, lastPrefixTable);
+		}
+
+		private static bool IsUsnVectorEqual(USN_VECTOR a, USN_VECTOR b)
+		{
+			return a.usnHighObjUpdate == b.usnHighObjUpdate
+				&& a.usnReserved == b.usnReserved
+				&& a.usnHighPropUpdate == b.usnHighPropUpdate;
 		}
 
 		/// <summary>
