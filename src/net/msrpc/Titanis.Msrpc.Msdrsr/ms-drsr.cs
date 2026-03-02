@@ -1119,11 +1119,20 @@ namespace ms_drsr {
             Titanis.DceRpc.IRpcEncoder encoder = req.StubData;
             encoder.WriteContextHandle(hDrs);
             encoder.WriteValue((uint)8);  // dwInVersion = 8
+            // DRS_MSG_GETCHGREQ is a versioned union. Even with dwInVersion passed
+            // separately, the on-wire union discriminator must still be present.
+            encoder.WriteValue((uint)8);  // union tag = V8
+            encoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
             encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._4Byte);
             encoder.WriteStructDeferral(pmsgIn);
             var sendTask = this.SendRequestAsync(req, cancellationToken);
             Titanis.DceRpc.IRpcDecoder decoder = await sendTask;
             pdwOutVersion.value = decoder.ReadUInt32();
+            uint outTag = decoder.ReadUInt32();
+            if (outTag != 6) {
+                throw new InvalidOperationException($"IDL_DRSGetNCChanges returned unsupported union tag {outTag} (expected 6).");
+            }
+            decoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
             pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_GETCHGREPLY_V6>(Titanis.DceRpc.NdrAlignment._4Byte);
             decoder.ReadStructDeferral<DRS_MSG_GETCHGREPLY_V6>(ref pmsgOut.value);
             uint retval = decoder.ReadUInt32();
@@ -1145,11 +1154,19 @@ namespace ms_drsr {
             Titanis.DceRpc.IRpcEncoder encoder = req.StubData;
             encoder.WriteContextHandle(hDrs);
             encoder.WriteValue((uint)1);  // dwInVersion = 1
+            // DRS_MSG_CRACKREQ is a versioned union with discriminator on wire.
+            encoder.WriteValue((uint)1);  // union tag = V1
+            encoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
             encoder.WriteFixedStruct(pmsgIn, Titanis.DceRpc.NdrAlignment._4Byte);
             encoder.WriteStructDeferral(pmsgIn);
             var sendTask = this.SendRequestAsync(req, cancellationToken);
             Titanis.DceRpc.IRpcDecoder decoder = await sendTask;
             pdwOutVersion.value = decoder.ReadUInt32();
+            uint outTag = decoder.ReadUInt32();
+            if (outTag != 1) {
+                throw new InvalidOperationException($"IDL_DRSCrackNames returned unsupported union tag {outTag} (expected 1).");
+            }
+            decoder.Align(Titanis.DceRpc.NdrAlignment._4Byte);
             pmsgOut.value = decoder.ReadFixedStruct<DRS_MSG_CRACKREPLY_V1>(Titanis.DceRpc.NdrAlignment._4Byte);
             decoder.ReadStructDeferral<DRS_MSG_CRACKREPLY_V1>(ref pmsgOut.value);
             uint retval = decoder.ReadUInt32();

@@ -197,6 +197,9 @@ namespace Titanis.Msrpc.Msdrsr
 			DRS_MSG_GETCHGREQ_V8 request,
 			CancellationToken cancellationToken)
 		{
+			this.EmitDiagnostic(
+				$"[SuperDiag] DRSGetNCChanges start ulFlags=0x{request.ulFlags:X8} cMaxObjects={request.cMaxObjects} cMaxBytes={request.cMaxBytes} hasPartial={(request.pPartialAttrSet != null)}");
+
 			var pdwOutVersion = new RpcPointer<uint>();
 			var pmsgOut = new RpcPointer<DRS_MSG_GETCHGREPLY_V6>();
 
@@ -208,6 +211,8 @@ namespace Titanis.Msrpc.Msdrsr
 				cancellationToken).ConfigureAwait(false);
 
 			((Win32ErrorCode)ret).CheckAndThrow();
+			this.EmitDiagnostic(
+				$"[SuperDiag] DRSGetNCChanges returned ret=0x{ret:X8} dwOutVersion={pdwOutVersion.value} moreData={pmsgOut.value.fMoreData} cNumObjects={pmsgOut.value.cNumObjects} cNumBytes={pmsgOut.value.cNumBytes}");
 
 			return pmsgOut.value;
 		}
@@ -220,6 +225,9 @@ namespace Titanis.Msrpc.Msdrsr
 			DS_NAME_FLAGS flags,
 			CancellationToken cancellationToken)
 		{
+			this.EmitDiagnostic(
+				$"[SuperDiag] DRSCrackNames start cNames={names.Length} offered={(uint)formatOffered} desired={(uint)formatDesired} flags=0x{(uint)flags:X8}");
+
 			var request = new DRS_MSG_CRACKREQ_V1
 			{
 				CodePage = 0,
@@ -242,6 +250,8 @@ namespace Titanis.Msrpc.Msdrsr
 				cancellationToken).ConfigureAwait(false);
 
 			((Win32ErrorCode)ret).CheckAndThrow();
+			this.EmitDiagnostic(
+				$"[SuperDiag] DRSCrackNames returned ret=0x{ret:X8} dwOutVersion={pdwOutVersion.value} cItems={pmsgOut.value.pResult?.value.cItems ?? 0}");
 
 			return pmsgOut.value.pResult?.value ?? new DS_NAME_RESULTW();
 		}
