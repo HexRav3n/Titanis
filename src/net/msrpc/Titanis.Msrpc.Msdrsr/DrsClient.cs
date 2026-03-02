@@ -17,6 +17,11 @@ namespace Titanis.Msrpc.Msdrsr
 	public class DrsClient : RpcServiceClient<ms_drsr.drsClientProxy>
 	{
 		/// <summary>
+		/// Optional sink for verbose DRS bind diagnostics.
+		/// </summary>
+		public Action<string>? DiagnosticSink { get; set; }
+
+		/// <summary>
 		/// Default client GUID used by native NTDS API callers.
 		/// </summary>
 		public static readonly Guid NtdsApiClientGuid = new("e24d201a-4fd6-11d1-a3da-0000f875ae0d");
@@ -54,27 +59,33 @@ namespace Titanis.Msrpc.Msdrsr
 
 			if (clientGuid == Guid.Empty)
 				clientGuid = NtdsApiClientGuid;
+			this.EmitDiagnostic(
+				$"[SuperDiag] DRSBind start clientGuid={clientGuid} extFlags=0x{extFlagsUint:X8}");
 
 			ms_dtyp.GUID clientDsaGuid = clientGuid.ToRpcGuid();
 			var puuidClientDsa = new RpcPointer<ms_dtyp.GUID>(clientDsaGuid);
 
 			// Some DC/build combinations are strict about DRSBind extension blob layout.
 			// Try several known profiles.
-			var extBlobs = new[]
+			var extProfiles = new (string Name, byte[] Blob)[]
 			{
-				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF),
-				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0),
-				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: false, extCaps: 0),
-				BuildDrsExtensionsBlobWithInnerCb(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF),
-				BuildLegacyShortExtensionsBlob(extFlagsUint),
+				("52-extcaps-ffffffff", BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF)),
+				("52-extcaps-00000000", BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0)),
+				("48-no-extcaps", BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: false, extCaps: 0)),
+				("56-inner-cb-extcaps-ffffffff", BuildDrsExtensionsBlobWithInnerCb(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF)),
+				("8-legacy-short", BuildLegacyShortExtensionsBlob(extFlagsUint)),
 			};
 
 			Win32ErrorCode lastError = 0;
-			foreach (var extBlob in extBlobs)
+			for (int i = 0; i < extProfiles.Length; i++)
 			{
+				var profile = extProfiles[i];
+				var extBlob = profile.Blob;
 				var pextClient = new RpcPointer<DRS_EXTENSIONS>(new DRS_EXTENSIONS { cb = (uint)extBlob.Length, rgb = extBlob });
 				var ppextServer = new RpcPointer<RpcPointer<DRS_EXTENSIONS>>(new RpcPointer<DRS_EXTENSIONS>());
 				var phDrs = new RpcPointer<RpcContextHandle>();
+				this.EmitDiagnostic(
+					$"[SuperDiag] DRSBind attempt {i + 1}/{extProfiles.Length} profile={profile.Name} cb={extBlob.Length} rgbHex={FormatHex(extBlob)}");
 
 				try
 				{
@@ -86,14 +97,22 @@ namespace Titanis.Msrpc.Msdrsr
 						cancellationToken).ConfigureAwait(false);
 
 					lastError = (Win32ErrorCode)ret;
+					this.EmitDiagnostic(
+						$"[SuperDiag] DRSBind attempt {i + 1} profile={profile.Name} returned 0x{(uint)lastError:X8}");
 					if (lastError == 0)
+					{
+						this.EmitDiagnostic(
+							$"[SuperDiag] DRSBind success profile={profile.Name} ctx={phDrs.value.contextId}");
 						return new DrsDsa(this, phDrs.value);
+					}
 					if (lastError != Win32ErrorCode.RPC_X_BAD_STUB_DATA)
 						lastError.CheckAndThrow();
 				}
 				catch (Win32Exception ex) when ((uint)ex.NativeErrorCode == (uint)Win32ErrorCode.RPC_X_BAD_STUB_DATA)
 				{
 					lastError = Win32ErrorCode.RPC_X_BAD_STUB_DATA;
+					this.EmitDiagnostic(
+						$"[SuperDiag] DRSBind attempt {i + 1} profile={profile.Name} threw RPC_X_BAD_STUB_DATA ({ex.Message})");
 				}
 			}
 
@@ -152,6 +171,19 @@ namespace Titanis.Msrpc.Msdrsr
 			buffer[offset + 1] = (byte)(value >> 8);
 			buffer[offset + 2] = (byte)(value >> 16);
 			buffer[offset + 3] = (byte)(value >> 24);
+		}
+
+		private void EmitDiagnostic(string message)
+		{
+			this.DiagnosticSink?.Invoke(message);
+		}
+
+		private static string FormatHex(byte[] bytes)
+		{
+			const int maxBytes = 64;
+			int take = Math.Min(maxBytes, bytes.Length);
+			string hex = Convert.ToHexString(bytes, 0, take).ToLowerInvariant();
+			return (bytes.Length > maxBytes) ? $"{hex}..." : hex;
 		}
 
 		internal async Task UnbindAsync(RpcContextHandle handle, CancellationToken cancellationToken)

