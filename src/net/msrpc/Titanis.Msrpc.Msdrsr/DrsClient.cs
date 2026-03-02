@@ -99,12 +99,12 @@ namespace Titanis.Msrpc.Msdrsr
 					lastError = (Win32ErrorCode)ret;
 					this.EmitDiagnostic(
 						$"[SuperDiag] DRSBind attempt {i + 1} profile={profile.Name} returned 0x{(uint)lastError:X8}");
-					if (lastError == 0)
-					{
-						this.EmitDiagnostic(
-							$"[SuperDiag] DRSBind success profile={profile.Name} ctx={phDrs.value.contextId}");
-						return new DrsDsa(this, phDrs.value);
-					}
+						if (lastError == 0)
+						{
+							this.EmitDiagnostic(
+								$"[SuperDiag] DRSBind success profile={profile.Name} ctxIsEmpty={phDrs.value.IsEmpty}");
+							return new DrsDsa(this, phDrs.value);
+						}
 					if (lastError != Win32ErrorCode.RPC_X_BAD_STUB_DATA)
 						lastError.CheckAndThrow();
 				}
