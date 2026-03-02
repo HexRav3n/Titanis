@@ -46,34 +46,10 @@ namespace Titanis.Msrpc.Msdrsr
 		/// <param name="cancellationToken">Cancellation token</param>
 		public async Task<DrsDsa> BindAsync(Guid clientGuid, CancellationToken cancellationToken)
 		{
-			// Keep extension flags aligned with known-working DRSUAPI clients.
-			var extFlags =
-				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_BASE |
-				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_GETCHGREPLY_V6 |
-				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_STRONG_ENCRYPTION |
-				DRS_EXTENSIONS_IN_FLAGS.DRS_EXT_GETCHGREQ_V8;
-
-			// DRS_EXTENSIONS.rgb contains a serialized DRS_EXTENSIONS_INT:
-			//   DWORD dwFlags
-			//   GUID  SiteObjGuid
-			//   DWORD Pid
-			//   DWORD dwReplEpoch
-			//   DWORD dwFlagsExt
-			//   GUID  ConfigObjGUID
-			//   DWORD dwExtCaps
-			byte[] extBlob = new byte[52];
-			uint extFlagsUint = (uint)extFlags;
-			WriteUInt32Le(extBlob, 0, extFlagsUint);       // dwFlags
-			// SiteObjGuid: zeros
-			WriteUInt32Le(extBlob, 20, 0);                 // Pid
-			WriteUInt32Le(extBlob, 24, 0);                 // dwReplEpoch
-			WriteUInt32Le(extBlob, 28, 0);                 // dwFlagsExt
-			// ConfigObjGUID: zeros
-			WriteUInt32Le(extBlob, 48, 0xFFFFFFFF);        // dwExtCaps
-
-			var pextClient = new RpcPointer<DRS_EXTENSIONS>(new DRS_EXTENSIONS { cb = (uint)extBlob.Length, rgb = extBlob });
-			var ppextServer = new RpcPointer<RpcPointer<DRS_EXTENSIONS>>(new RpcPointer<DRS_EXTENSIONS>());
-			var phDrs = new RpcPointer<RpcContextHandle>();
+			// Match known-good DRSUAPI clients (Impacket/Mimikatz behavior):
+			// DRS_EXT_GETCHGREQ_V6 | DRS_EXT_GETCHGREPLY_V6 |
+			// DRS_EXT_GETCHGREQ_V8 | DRS_EXT_STRONG_ENCRYPTION
+			const uint extFlagsUint = 0x05408000;
 
 			if (clientGuid == Guid.Empty)
 				clientGuid = NtdsApiClientGuid;
@@ -81,16 +57,53 @@ namespace Titanis.Msrpc.Msdrsr
 			ms_dtyp.GUID clientDsaGuid = clientGuid.ToRpcGuid();
 			var puuidClientDsa = new RpcPointer<ms_dtyp.GUID>(clientDsaGuid);
 
-			var ret = await this._proxy.IDL_DRSBind(
-				puuidClientDsa,
-				pextClient,
-				ppextServer,
-				phDrs,
-				cancellationToken).ConfigureAwait(false);
+			// Some DC/build combinations are strict about the DRS_EXTENSIONS_INT size.
+			// Try modern profile first, then progressively smaller legacy profiles.
+			var extBlobs = new[]
+			{
+				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0xFFFFFFFF),
+				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: true, extCaps: 0),
+				BuildDrsExtensionsBlob(extFlagsUint, includeExtCaps: false, extCaps: 0),
+			};
 
-			((Win32ErrorCode)ret).CheckAndThrow();
+			Win32ErrorCode lastError = 0;
+			foreach (var extBlob in extBlobs)
+			{
+				var pextClient = new RpcPointer<DRS_EXTENSIONS>(new DRS_EXTENSIONS { cb = (uint)extBlob.Length, rgb = extBlob });
+				var ppextServer = new RpcPointer<RpcPointer<DRS_EXTENSIONS>>(new RpcPointer<DRS_EXTENSIONS>());
+				var phDrs = new RpcPointer<RpcContextHandle>();
 
-			return new DrsDsa(this, phDrs.value);
+				var ret = await this._proxy.IDL_DRSBind(
+					puuidClientDsa,
+					pextClient,
+					ppextServer,
+					phDrs,
+					cancellationToken).ConfigureAwait(false);
+
+				lastError = (Win32ErrorCode)ret;
+				if (lastError == 0)
+					return new DrsDsa(this, phDrs.value);
+				if (lastError != Win32ErrorCode.RPC_X_BAD_STUB_DATA)
+					lastError.CheckAndThrow();
+			}
+
+			lastError.CheckAndThrow();
+			throw new InvalidOperationException("Unreachable.");
+		}
+
+		private static byte[] BuildDrsExtensionsBlob(uint dwFlags, bool includeExtCaps, uint extCaps)
+		{
+			int cb = includeExtCaps ? 52 : 48;
+			byte[] extBlob = new byte[cb];
+			WriteUInt32Le(extBlob, 0, dwFlags); // dwFlags
+			// SiteObjGuid is all zeros (offset 4..19)
+			WriteUInt32Le(extBlob, 20, 0);      // Pid
+			WriteUInt32Le(extBlob, 24, 0);      // dwReplEpoch
+			WriteUInt32Le(extBlob, 28, 0);      // dwFlagsExt
+			// ConfigObjGUID is all zeros (offset 32..47)
+			if (includeExtCaps)
+				WriteUInt32Le(extBlob, 48, extCaps); // dwExtCaps
+			return extBlob;
 		}
 
 		private static void WriteUInt32Le(byte[] buffer, int offset, uint value)

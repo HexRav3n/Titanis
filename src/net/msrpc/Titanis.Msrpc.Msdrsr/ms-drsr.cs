@@ -1060,8 +1060,17 @@ namespace ms_drsr {
             }
             encoder.WritePointer(pextClient);
             if ((null != pextClient)) {
-                encoder.WriteConformantStruct(pextClient.value, Titanis.DceRpc.NdrAlignment._4Byte);
-                encoder.WriteStructDeferral(pextClient.value);
+                // Explicitly marshal DRS_EXTENSIONS as:
+                //   [max_count][cb][rgb bytes]
+                // This matches known-good DRSUAPI clients.
+                var ext = pextClient.value;
+                var rgb = ext.rgb ?? Array.Empty<byte>();
+                uint cb = (ext.cb != 0) ? ext.cb : (uint)rgb.Length;
+                encoder.WriteValue((uint)rgb.Length);
+                encoder.WriteValue(cb);
+                for (int i = 0; (i < rgb.Length); i++) {
+                    encoder.WriteValue(rgb[i]);
+                }
             }
             var sendTask = this.SendRequestAsync(req, cancellationToken);
             Titanis.DceRpc.IRpcDecoder decoder = await sendTask;
